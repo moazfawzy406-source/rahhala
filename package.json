@@ -1,0 +1,14 @@
+{
+  "name": "rahhala",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "wrangler dev",
+    "test": "node tests/security.cjs",
+    "check": "wrangler deploy --dry-run --keep-vars --outdir build"
+  },
+  "devDependencies": {
+    "wrangler": "4.166.0",
+    "miniflare": "5.20261119.0-beta"
+  }
+}
