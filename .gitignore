@@ -1,0 +1,17 @@
+node_modules/
+.wrangler/
+build/
+.env
+.env.*
+.dev.vars
+.dev.vars.*
+*.sqlite
+*.sqlite3
+*.db
+*.log
+*.zip
+.admin_pw
+*token*
+*secret*
+.DS_Store
+review/
