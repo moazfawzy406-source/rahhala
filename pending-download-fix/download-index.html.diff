@@ -1,0 +1,40 @@
+--- live-840d/public/index.html
++++ patch/public/index.html
+@@ -689,6 +689,37 @@
+ };
+ const F = k => "/api/file/" + k + ((S.furls || {})[k] || "?expired=1");
+ const A = k => "/api/audio/" + k + ((S.furls || {})[k] || "?expired=1");
++// Always obtain a fresh capability and check the response before creating a saved file.
++let downloadBusy=false;
++function downloadNotice(message,retry) {
++ let panel=$('download-status');if(!panel){panel=document.createElement('div');panel.id='download-status';panel.style.cssText='position:fixed;z-index:9999;inset:auto 16px calc(var(--navh,0px) + 24px);max-width:540px;margin:auto;padding:18px;background:var(--card);color:var(--txt);border:1px solid var(--gold);border-radius:16px;box-shadow:0 8px 32px #0005;direction:rtl';document.body.appendChild(panel);}
++ panel.replaceChildren();panel.setAttribute('role',retry?'alert':'status');const text=document.createElement('p');text.textContent=message;panel.appendChild(text);
++ if(retry){const b=document.createElement('button');b.className='btn';b.textContent='إعادة المحاولة';b.onclick=retry;panel.appendChild(b);}
++ const close=document.createElement('button');close.className='btn ghost';close.textContent='إغلاق';close.onclick=()=>panel.remove();panel.appendChild(close);
++}
++async function downloadAsset(path,name) {
++ if(downloadBusy) return;downloadBusy=true;downloadNotice('جاري تجهيز التحميل…');
++ try {
++  const u=new URL(path,location.origin),parts=u.pathname.split('/'),kind=parts[2],key=parts[3];
++  if(!['file','audio'].includes(kind)||!key) throw new Error('رابط الملف غير صالح');
++  const sign=await fetch('/api/asset-links',{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+S.token},body:JSON.stringify({items:[{kind,key}]}),signal:AbortSignal.timeout(45000)});
++  const signed=await sign.json().catch(()=>({}));
++  if(sign.status===401) throw new Error('انتهت جلسة الدخول. سجّل دخولك مرة تانية وحاول التحميل.');
++  if(!sign.ok||!signed.urls?.[key]) throw new Error('الملف غير متاح لك أو تم حذفه. حدّث المحادثة وحاول تاني.');
++  const r=await fetch('/api/'+kind+'/'+encodeURIComponent(key)+signed.urls[key]+'&dl=1',{cache:'no-store',signal:AbortSignal.timeout(45000)});
++  if(!r.ok) throw new Error('تعذر تحميل الملف. حاول تاني للحصول على رابط جديد.');
++  const type=(r.headers.get('content-type')||'').toLowerCase();
++  if(type.includes('json')||type.includes('text/')||!r.headers.get('content-disposition')?.startsWith('attachment')) throw new Error('الرد مش ملف صالح. لم يتم حفظ أي ملف.');
++  const blob=await r.blob(),expected=Number(r.headers.get('content-length'));
++  if(!blob.size||!Number.isSafeInteger(expected)||expected<=0||blob.size!==expected) throw new Error('التحميل غير مكتمل. لم يتم حفظ الملف؛ حاول تاني.');
++  let filename=name||'file';const cd=r.headers.get('content-disposition')||'',match=cd.match(/filename\*=UTF-8''([^;]+)/i);
++  if(match){try{filename=decodeURIComponent(match[1]);}catch{}}
++  const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;const safeName=filename.replace(/[^\x20-\x7e]/g,'').replace(/^[ ._-]+/,'').trim();a.download=/[^\x20-\x7e]/.test(filename)?(safeName&&!safeName.startsWith('.')?safeName:'Rahhala-file'+(filename.match(/\.[A-Za-z0-9]{1,8}$/)?.[0]||'')):filename;document.body.appendChild(a);a.click();setTimeout(()=>{a.remove();URL.revokeObjectURL(url);},120000);
++  downloadNotice('الملف جاهز. لو التحميل ما بدأش، اضغط حفظ الملف.');const save=document.createElement('a');save.href=url;save.download=a.download;save.className='btn';save.textContent='حفظ الملف';$('download-status').prepend(save);
++ } catch(e){downloadNotice(e.message||'تعذر التحميل. حاول تاني.',()=>downloadAsset(path,name));}
++ finally{downloadBusy=false;}
++}
++document.addEventListener('click',e=>{const a=e.target.closest('a');if(!a||(!a.classList.contains('fdl')&&!a.classList.contains('fattach')&&a.id!=='iv-dl'))return;const u=new URL(a.href,location.origin);if(u.origin!==location.origin||!/^\/api\/(file|audio)\//.test(u.pathname))return;e.preventDefault();downloadAsset(u.pathname,a.getAttribute('download')||a.querySelector('b')?.textContent||'file');},true);
+ async function renewAssetLinks() {
+  if(!S.token || document.hidden) return;
+  const nodes=[...document.querySelectorAll('img[src^="/api/file/"],audio[src^="/api/audio/"],a[href^="/api/file/"],a[href^="/api/audio/"]')];

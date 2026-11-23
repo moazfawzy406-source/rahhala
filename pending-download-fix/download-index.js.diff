@@ -1,0 +1,71 @@
+--- live-840d/src/index.js
++++ patch/src/index.js
+@@ -106,11 +106,38 @@
+   if (b[0]===0xFF&&(b[1]&0xE0)===0xE0) return "audio/mpeg";
+   if (b[4]===0x66&&b[5]===0x74&&b[6]===0x79&&b[7]===0x70) return "audio/mp4";
+   if (b[0]===0x52&&b[1]===0x49&&b[2]===0x46&&b[3]===0x46&&b[8]===0x57&&b[9]===0x41&&b[10]===0x56&&b[11]===0x45) return "audio/wav";
+-  if (b[0]===0x50&&b[1]===0x4B&&b[2]===0x03&&b[3]===0x04) {
+-    const text=new TextDecoder().decode(b);
+-    if(text.includes("[Content_Types].xml") && ["word/","xl/","ppt/"].some(x=>text.includes(x))) return "application/zip";
+-  }
++  if (b[0]===0x50&&b[1]===0x4B&&b[2]===0x03&&b[3]===0x04) return officeZipType(b);
+   return null;
++}
++// Bounded classic-ZIP structure validation, not an Office document parser or AV scanner.
++function officeZipType(b) {
++  try {
++    const v=new DataView(b.buffer,b.byteOffset,b.byteLength); let end=-1;
++    for(let i=b.length-22;i>=Math.max(0,b.length-65557);i--) if(v.getUint32(i,true)===0x06054b50 && i+22+v.getUint16(i+20,true)===b.length){end=i;break;}
++    if(end<0 || v.getUint16(end+4,true)||v.getUint16(end+6,true)) return null;
++    const count=v.getUint16(end+10,true),size=v.getUint32(end+12,true),start=v.getUint32(end+16,true);
++    if(!count||count>10000||count!==v.getUint16(end+8,true)||start+size!==end) return null;
++    const names=new Set();let p=start;
++    for(let i=0;i<count;i++) {
++      if(p+46>end||v.getUint32(p,true)!==0x02014b50) return null;
++      const flags=v.getUint16(p+8,true),method=v.getUint16(p+10,true),compressed=v.getUint32(p+20,true),nl=v.getUint16(p+28,true),el=v.getUint16(p+30,true),cl=v.getUint16(p+32,true),local=v.getUint32(p+42,true);
++      if(flags&1||![0,8].includes(method)||p+46+nl+el+cl>end||local+30>start||v.getUint32(local,true)!==0x04034b50) return null;
++      const name=new TextDecoder('utf-8',{fatal:true}).decode(b.subarray(p+46,p+46+nl));
++      const lnl=v.getUint16(local+26,true),lel=v.getUint16(local+28,true);
++      if(names.has(name)||name.startsWith('/')||name.includes('\\')||name.split('/').includes('..')||local+30+lnl+lel+compressed>start) return null;
++      if(new TextDecoder().decode(b.subarray(local+30,local+30+lnl))!==name) return null;
++      names.add(name);p+=46+nl+el+cl;
++    }
++    if(p!==end||!names.has('[Content_Types].xml')||!names.has('_rels/.rels')) return null;
++    const types=[['ppt/presentation.xml','application/vnd.openxmlformats-officedocument.presentationml.presentation'],['word/document.xml','application/vnd.openxmlformats-officedocument.wordprocessingml.document'],['xl/workbook.xml','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']].filter(([n])=>names.has(n));
++    return types.length===1?types[0][1]:null;
++  } catch {return null;}
++}
++function attachmentDisposition(name,inline=false) {
++  const clean=String(name||'file').replace(/[\x00-\x1f\x7f\/\\]/g,'_').slice(0,120);
++  const fallback=clean.replace(/[^A-Za-z0-9 ._()-]/g,'_')||'file';
++  const encoded=encodeURIComponent(clean).replace(/[!'()*]/g,c=>'%'+c.charCodeAt(0).toString(16).toUpperCase());
++  return (inline?'inline':'attachment')+'; filename="'+fallback+'"; filename*=UTF-8\'\''+encoded;
+ }
+ async function sendResetEmail(env, to, name, code) {
+   try {
+@@ -338,11 +365,13 @@
+         const parts = rows.map(r => r.data instanceof ArrayBuffer ? new Uint8Array(r.data) : new Uint8Array(r.data.buffer || r.data, r.data.byteOffset || 0, r.data.byteLength || r.data.length));
+         const out = new Uint8Array(meta.size);
+         let off = 0;
+-        for (const part of parts) { out.set(part, off); off += part.length; }
++        for (const part of parts) { if(off+part.length>out.length) return err("تعذر قراءة الملف كاملاً",500); out.set(part, off); off += part.length; }
++        if(off!==out.length) return err("تعذر قراءة الملف كاملاً",500);
++        const responseMime = meta.mime === "application/zip" ? (officeZipType(out)||"application/octet-stream") : meta.mime;
+         const dlF = url.searchParams.get("dl") === "1";
+-        const mimeLow = (meta.mime || "").toLowerCase();
++        const mimeLow = (responseMime || "").toLowerCase();
+         const activeType = !["image/png","image/jpeg","image/gif","image/webp","audio/webm","audio/ogg","audio/mp4","audio/mpeg","audio/wav"].includes(mimeLow);
+-        const fres = new Response(out, { headers: { "content-type": meta.mime, "content-length": String(meta.size), "content-disposition": `${dlF || activeType ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(meta.name)}`, "cache-control": "private, no-store", "x-content-type-options": "nosniff" } });
++        const fres = new Response(out, { headers: { "content-type": responseMime, "content-length": String(meta.size), "content-disposition": attachmentDisposition(meta.name,!(dlF||activeType)), "cache-control": "private, no-store", "x-content-type-options": "nosniff" } });
+         return fres;
+       }
+       if (p.startsWith("/api/audio/") && M === "GET") {
+@@ -804,7 +833,7 @@
+           if (buf.byteLength > 15000000) return err("الملف كبير — الحد الأقصى ١٥ ميجا");
+           const bytesF = new Uint8Array(buf);
+           const realF = sniffType(bytesF);
+-          const okF = realF && (realF.startsWith("image/") || realF === "application/pdf" || realF.startsWith("audio/") || realF === "application/zip");
++          const okF = realF && (realF.startsWith("image/") || realF === "application/pdf" || realF.startsWith("audio/") || realF.startsWith("application/vnd.openxmlformats-officedocument."));
+           if (!okF) return err("نوع الملف غير مدعوم — المسموح: صور أو PDF أو صوت أو مستندات Office");
+           const declared = (req.headers.get("content-type") || "application/octet-stream").split(";")[0];
+           let mime = realF;

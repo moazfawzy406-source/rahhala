@@ -1,0 +1,8 @@
+--- live-840d/public/sw.js
++++ patch/public/sw.js
+@@ -1,4 +1,4 @@
+-// v20 — network-first, and purge any caches an older SW may have left behind
++// v20-download-fix — network-first, and purge any caches an older SW may have left behind
+ self.addEventListener("install", e => self.skipWaiting());
+ self.addEventListener("activate", e =>
+   e.waitUntil(

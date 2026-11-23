@@ -1,0 +1,14 @@
+CREATE TABLE audio_chunks (key TEXT NOT NULL, seq INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (key, seq));
+CREATE TABLE audio_meta (key TEXT PRIMARY KEY, mime TEXT NOT NULL, size INTEGER NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE file_chunks (key TEXT NOT NULL, seq INTEGER NOT NULL, data BLOB NOT NULL, PRIMARY KEY (key, seq));
+CREATE TABLE file_meta (key TEXT PRIMARY KEY, mime TEXT NOT NULL, size INTEGER NOT NULL, name TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE login_attempts (name TEXT PRIMARY KEY, fails INTEGER NOT NULL DEFAULT 0, locked_until TEXT);
+CREATE TABLE materials (id TEXT PRIMARY KEY, subject_id TEXT NOT NULL, section_id TEXT, title TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'link', url TEXT NOT NULL, note TEXT, created_by TEXT, created_at TEXT NOT NULL DEFAULT (datetime('now')), ord INTEGER);
+CREATE TABLE message_hides (message_id INTEGER NOT NULL, user_id TEXT NOT NULL, PRIMARY KEY (message_id, user_id));
+CREATE TABLE messages (id INTEGER PRIMARY KEY AUTOINCREMENT, channel TEXT NOT NULL, user_id TEXT NOT NULL, name TEXT NOT NULL, body TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), audio_key TEXT, reply_to INTEGER, file_key TEXT, file_name TEXT);
+CREATE TABLE reactions (message_id INTEGER NOT NULL, user_id TEXT NOT NULL, emoji TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT (datetime('now')), PRIMARY KEY (message_id, user_id));
+CREATE TABLE sections (id TEXT PRIMARY KEY, subject_id TEXT NOT NULL REFERENCES subjects(id), label TEXT NOT NULL, ord INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE subjects (id TEXT PRIMARY KEY, name TEXT NOT NULL, color TEXT NOT NULL DEFAULT '#E3B23C', icon TEXT NOT NULL DEFAULT 'book', ord INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE tokens (token TEXT PRIMARY KEY, user_id TEXT NOT NULL REFERENCES users(id), created_at TEXT NOT NULL DEFAULT (datetime('now')));
+CREATE TABLE users (id TEXT PRIMARY KEY, name TEXT NOT NULL, pass_hash TEXT NOT NULL, approved INTEGER NOT NULL DEFAULT 0, role TEXT NOT NULL DEFAULT 'member', created_at TEXT NOT NULL DEFAULT (datetime('now')));

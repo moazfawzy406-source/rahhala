@@ -1,0 +1,9 @@
+{
+  "name": "rahhala",
+  "main": "src/index.js",
+  "compatibility_date": "2026-11-01",
+  "assets": { "directory": "./public", "binding": "ASSETS", "not_found_handling": "single-page-application" },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "halqa-db", "database_id": "64a573e9-ea1a-4b52-abe6-aeb87003001e" }
+  ]
+}
